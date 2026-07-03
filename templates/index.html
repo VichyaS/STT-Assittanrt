@@ -892,6 +892,15 @@ async function transcribeAndSend(blob) {
                 }
                 lastSentText = text;
                 await sendMessage(text);
+            } else if (d.success && !d.text) {
+                // Silence detected — show system message, do NOT send to AI
+                console.log('🔇 Silence detected, showing prompt');
+                const div = document.createElement('div');
+                div.className = 'msg msg-bot';
+                div.innerHTML = '<div class="msg-label">ระบบ</div>ไม่ได้ยินเสียงของคุณ กรุณาพูดใหม่อีกครั้ง<div class="msg-time">' + new Date().toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'}) + '</div>';
+                chatMessages.appendChild(div);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                if (convMode) convTimer = setTimeout(startConvRecord, 800);
             } else {
                 showToast('Transcription failed: ' + (d.error || 'no text'), 'error');
                 if (convMode) convTimer = setTimeout(startConvRecord, 800);

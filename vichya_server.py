@@ -176,13 +176,16 @@ def speech_to_text(audio_file_path: str) -> str:
         if not raw_text:
             return ""
 
-        # ── Hallucination filter: only skip truly impossible phrases ──
+        # ── Hallucination filter: skip known silence/phrases ──
         known_hallucinations = [
             "โปรดติดตามตอนต่อไป",
+            "สวัสดีครับ ทุกคน", "สวัสดีค่ะ ทุกคน",
+            "สวัสดีครับทุกคน", "สวัสดีค่ะทุกคน",
+            "โอเค โอเค โอเค",
             "thank you for watching", "thanks for watching",
         ]
-        if raw_text in known_hallucinations:
-            print(f"🗑️  Known hallucination, filtered out")
+        if raw_text in known_hallucinations or len(raw_text) < 3:
+            print(f"🗑️  Filtered as silence/noise, returning empty")
             return ""
 
         # ── Skip LLM post-correction — it was causing more harm than good ──
