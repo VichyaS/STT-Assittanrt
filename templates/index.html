@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>AI VICHYA — Intelligent Assistant</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #111118;
+            --bg-card: rgba(20, 20, 35, 0.6);
+            --bg-card-hover: rgba(30, 30, 50, 0.7);
+            --border: rgba(255, 255, 255, 0.06);
+            --border-active: rgba(120, 100, 255, 0.3);
+            --text-primary: #f0f0f5;
+            --text-secondary: #a0a0b8;
+            --text-muted: #606078;
+            --accent-1: #7c5cfc;
+            --accent-2: #5ce0ff;
+            --accent-3: #ff5ca0;
+            --accent-gradient: linear-gradient(135deg, #7c5cfc 0%, #5ce0ff 50%, #ff5ca0 100%);
+            --accent-glow: 0 0 30px rgba(124, 92, 252, 0.3);
+            --radius-sm: 10px;
+            --radius: 16px;
+            --radius-lg: 24px;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', 'Noto Sans Thai', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Animated Background ── */
+        .bg-orbs {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+        .bg-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.15;
+            animation: orbFloat 20s ease-in-out infinite;
+        }
+        .bg-orb:nth-child(1) {
+            width: 600px; height: 600px;
+            background: var(--accent-1);
+            top: -200px; left: -100px;
+            animation-delay: 0s;
+        }
+        .bg-orb:nth-child(2) {
+            width: 500px; height: 500px;
+            background: var(--accent-2);
+            bottom: -150px; right: -100px;
+            animation-delay: -7s;
+        }
+        .bg-orb:nth-child(3) {
+            width: 400px; height: 400px;
+            background: var(--accent-3);
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            animation-delay: -14s;
+        }
+        @keyframes orbFloat {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            25% { transform: translate(60px, -40px) scale(1.1); }
+            50% { transform: translate(-30px, 50px) scale(0.9); }
+            75% { transform: translate(-50px, -30px) scale(1.05); }
+        }
+
+        /* ── Grid Pattern ── */
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+            mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+        }
+
+        /* ── Main Container ── */
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 28px;
+            background: var(--bg-card);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            margin-bottom: 20px;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .brand-logo {
+            width: 48px; height: 48px;
+            border-radius: var(--radius-sm);
+            background: var(--accent-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 800;
+            color: #fff;
+            box-shadow: var(--accent-glow);
+            animation: logoPulse 3s ease-in-out infinite;
+        }
+        @keyframes logoPulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(124,92,252,0.3); }
+            50% { box-shadow: 0 0 40px rgba(92,224,255,0.5); }
+        }
+        .brand-text h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .brand-text span {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(0, 255, 100, 0.08);
+            border: 1px solid rgba(0, 255, 100, 0.2);
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #4dff91;
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #4dff91;
+            box-shadow: 0 0 8px #4dff91;
+            animation: statusPulse 2s infinite;
+        }
+        @keyframes statusPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ── Main Layout ── */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            flex: 1;
+        }
+        @media (max-width: 800px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── Glass Card ── */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            transition: var(--transition);
+        }
+        .card:hover {
+            border-color: var(--border-active);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .card-header .icon {
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .icon-voice { background: rgba(124,92,252,0.15); color: var(--accent-1); }
+        .icon-chat { background: rgba(92,224,255,0.15); color: var(--accent-2); }
+
+        /* ── Voice Panel ── */
+        .voice-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .record-btn {
+            position: relative;
+            width: 100%;
+            padding: 28px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            transition: var(--transition);
+            overflow: hidden;
+        }
+        .record-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--accent-gradient);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .record-btn:hover::before { opacity: 0.05; }
+        .record-btn:hover {
+            border-color: var(--accent-1);
+            box-shadow: var(--accent-glow);
+            transform: translateY(-2px);
+        }
+        .record-btn.recording {
+            border-color: var(--accent-3);
+            background: rgba(255,92,160,0.08);
+            animation: recordGlow 1.5s ease-in-out infinite;
+        }
+        .record-btn.recording .mic-icon {
+            color: var(--accent-3);
+            animation: micPulse 0.8s ease-in-out infinite;
+        }
+        .record-btn.wake-active {
+            border-color: var(--accent-2);
+            background: rgba(92,224,255,0.06);
+            animation: wakeGlow 2s ease-in-out infinite;
+        }
+        .record-btn.converse-active {
+            border-color: var(--accent-3);
+            background: rgba(255,92,160,0.08);
+            animation: converseGlow 2s ease-in-out infinite;
+        }
+        @keyframes converseGlow {
+            0%, 100% { box-shadow: 0 0 15px rgba(255,92,160,0.15); }
+            50% { box-shadow: 0 0 40px rgba(255,92,160,0.4); }
+        }
+        @keyframes wakeGlow {
+            0%, 100% { box-shadow: 0 0 15px rgba(92,224,255,0.15); }
+            50% { box-shadow: 0 0 35px rgba(92,224,255,0.35); }
+        }
+        @keyframes recordGlow {
+            0%, 100% { box-shadow: 0 0 20px rgba(255,92,160,0.2); }
+            50% { box-shadow: 0 0 50px rgba(255,92,160,0.5); }
+        }
+        @keyframes micPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+        .mic-icon { font-size: 1.6rem; transition: var(--transition); }
+
+        /* ── Waveform Visualizer ── */
+        .waveform {
+            height: 80px;
+            background: rgba(0,0,0,0.3);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            padding: 0 16px;
+            overflow: hidden;
+        }
+        .wave-bar {
+            width: 4px;
+            border-radius: 2px;
+            background: var(--accent-gradient);
+            animation: waveAnim 1.2s ease-in-out infinite;
+        }
+        @keyframes waveAnim {
+            0%, 100% { height: 8px; opacity: 0.4; }
+            50% { height: 60px; opacity: 1; }
+        }
+
+        /* ── Quick Actions ── */
+        .quick-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+        }
+        .action-btn {
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.02);
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: var(--transition);
+        }
+        .action-btn:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: var(--border-active);
+            color: var(--text-primary);
+            transform: translateY(-1px);
+        }
+
+        /* ── Chat Panel ── */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 450px;
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-bottom: 16px;
+            scroll-behavior: smooth;
+        }
+        .chat-messages::-webkit-scrollbar {
+            width: 4px;
+        }
+        .chat-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.08);
+            border-radius: 4px;
+        }
+
+        .msg {
+            max-width: 85%;
+            padding: 14px 18px;
+            border-radius: var(--radius);
+            font-size: 0.92rem;
+            line-height: 1.55;
+            animation: msgIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        @keyframes msgIn {
+            from { opacity: 0; transform: translateY(12px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .msg-user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(124,92,252,0.25), rgba(92,224,255,0.15));
+            border: 1px solid rgba(124,92,252,0.25);
+            border-bottom-right-radius: 6px;
+        }
+        .msg-bot {
+            align-self: flex-start;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-bottom-left-radius: 6px;
+        }
+        .msg-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+            opacity: 0.6;
+        }
+        .msg-user .msg-label { color: var(--accent-1); }
+        .msg-bot .msg-label { color: var(--accent-2); }
+        .msg-time {
+            font-size: 0.65rem;
+            opacity: 0.4;
+            margin-top: 6px;
+            text-align: right;
+        }
+
+        /* ── Chat Input ── */
+        .chat-input-row {
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input-row input {
+            flex: 1;
+            padding: 14px 18px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: rgba(255,255,255,0.03);
+            color: var(--text-primary);
+            font-size: 0.92rem;
+            font-family: inherit;
+            outline: none;
+            transition: var(--transition);
+        }
+        .chat-input-row input:focus {
+            border-color: var(--accent-1);
+            box-shadow: 0 0 0 3px rgba(124,92,252,0.1);
+        }
+        .chat-input-row input::placeholder {
+            color: var(--text-muted);
+        }
+        .send-btn {
+            padding: 14px 22px;
+            border: none;
+            border-radius: var(--radius);
+            background: var(--accent-gradient);
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.92rem;
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+        .send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--accent-glow);
+        }
+        .send-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* ── Loading Dots ── */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 14px 18px;
+            align-self: flex-start;
+        }
+        .typing-indicator span {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--accent-2);
+            animation: typingBounce 1.4s ease-in-out infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-8px); opacity: 1; }
+        }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            padding: 14px 22px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            backdrop-filter: blur(40px);
+            border: 1px solid var(--border);
+            font-size: 0.85rem;
+            font-weight: 500;
+            z-index: 1000;
+            transform: translateX(120%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        }
+        .toast.show { transform: translateX(0); }
+        .toast.success { border-left: 3px solid #4dff91; }
+        .toast.error { border-left: 3px solid var(--accent-3); }
+        .toast.info { border-left: 3px solid var(--accent-2); }
+
+        /* ── Footer ── */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            margin-top: 20px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Animated Background -->
+    <div class="bg-orbs">
+        <div class="bg-orb"></div>
+        <div class="bg-orb"></div>
+        <div class="bg-orb"></div>
+    </div>
+    <div class="bg-grid"></div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- App -->
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="brand">
+                <div class="brand-logo">V</div>
+                <div class="brand-text">
+                    <h1>AI VICHYA</h1>
+                    <span>Intelligent Voice & Chat Assistant</span>
+                </div>
+            </div>
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                <span id="statusText">Online</span>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Voice Panel -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon icon-voice">🎤</div>
+                    Voice Control
+                </div>
+                <div class="voice-area">
+                    <button class="record-btn" id="recordBtn">
+                        <span class="mic-icon">🎙️</span>
+                        <span id="recordLabel">Tap to Speak</span>
+                    </button>
+
+                    <div class="waveform" id="waveform"></div>
+
+                    <div class="quick-actions">
+                        <button class="action-btn" id="btnConvMode">
+                            💬 Converse: OFF
+                        </button>
+                        <button class="action-btn" id="btnSearchMode">
+                            🌐 Search: OFF
+                        </button>
+                        <button class="action-btn" id="btnTestVoice">
+                            🔊 Test Voice
+                        </button>
+                        <button class="action-btn" id="btnClearChat">
+                            🗑️ Clear Chat
+                        </button>
+                        <button class="action-btn" id="btnPlayLast">
+                            ▶️ Play Last
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Panel -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon icon-chat">💬</div>
+                    Conversation
+                </div>
+                <div class="chat-area">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="msg msg-bot">
+                            <div class="msg-label">VICHYA</div>
+                            สวัสดีค่ะ! ฉันคือ วิชญะ (VICHYA) ผู้ช่วย AI อัจฉริยะของคุณ มีอะไรให้ฉันช่วยไหมคะ? 😊
+                            <div class="msg-time">now</div>
+                        </div>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chatInput" placeholder="พิมพ์ข้อความถึง VICHYA..." autocomplete="off">
+                        <button class="send-btn" id="sendBtn">Send →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            AI VICHYA v9.0 &copy; 2026 &nbsp;·&nbsp; Powered by OpenRouter &nbsp;·&nbsp; <span id="debugInfo" style="color:#4dff91">JS: loading...</span> &nbsp;·&nbsp; build: {{ ts }}
+        </div>
+    </div>
+
+    <script>
+// ==========================================
+// AI VICHYA v9 — Simple Voice Conversation
+// ==========================================
+const $ = id => document.getElementById(id);
+const chatMessages = $('chatMessages');
+const chatInput = $('chatInput');
+const toast = $('toast');
+const recordBtn = $('recordBtn');
+const recordLabel = $('recordLabel');
+const debugInfo = $('debugInfo');
+
+let searchMode = false;
+let convMode = false;
+let convTimer = null;
+let lastAudioB64 = null;
+let lastSentText = '';
+
+buildWaveform();
+checkStatus();
+debugInfo.textContent = 'JS: v9 ✅';
+
+function buildWaveform() {
+    const wf = $('waveform');
+    wf.innerHTML = '';
+    for (let i = 0; i < 40; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'wave-bar';
+        bar.style.animationDelay = `${i * 0.04}s`;
+        bar.style.height = `${Math.random() * 40 + 8}px`;
+        wf.appendChild(bar);
+    }
+}
+
+function showToast(msg, type) {
+    toast.textContent = msg;
+    toast.className = `toast ${type || 'info'} show`;
+    clearTimeout(toast._tid);
+    toast._tid = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+async function checkStatus() {
+    try { const r = await fetch('/api/status'); $('statusText').textContent = r.ok ? 'Online' : 'Offline'; }
+    catch { $('statusText').textContent = 'Offline'; }
+}
+
+function addMessage(text, isUser) {
+    const div = document.createElement('div');
+    div.className = `msg ${isUser ? 'msg-user' : 'msg-bot'}`;
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const d2 = document.createElement('div'); d2.textContent = text;
+    div.innerHTML = `<div class="msg-label">${isUser ? 'You' : 'VICHYA'}</div>${d2.innerHTML}<div class="msg-time">${time}</div>`;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function showTyping() {
+    if ($('typingDots')) return;
+    const div = document.createElement('div');
+    div.className = 'typing-indicator'; div.id = 'typingDots';
+    div.innerHTML = '<span></span><span></span><span></span>';
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+function hideTyping() { const el = $('typingDots'); if (el) el.remove(); }
+
+function playAudioB64(b64) {
+    try { const a = new Audio(`data:audio/mp3;base64,${b64}`); a.play(); return a; } catch { return null; }
+}
+
+async function sendMessage(message) {
+    if (!message.trim()) return;
+    addMessage(message, true);
+    chatInput.value = '';
+    showTyping();
+    try {
+        const r = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, search: searchMode }),
+        });
+        const d = await r.json();
+        hideTyping();
+        if (d.success) {
+            addMessage(d.response, false);
+            if (d.audio_base64) {
+                lastAudioB64 = d.audio_base64;
+                const audio = playAudioB64(d.audio_base64);
+                if (convMode && audio) {
+                    audio.onended = () => {
+                        console.log('🔄 TTS done, next round...');
+                        convTimer = setTimeout(startConvRecord, 800);
+                    };
+                    audio.onerror = () => convTimer = setTimeout(startConvRecord, 800);
+                    return;
+                }
+            }
+        } else {
+            addMessage('ขออภัยค่ะ: ' + (d.error || 'unknown'), false);
+        }
+    } catch {
+        hideTyping();
+        addMessage('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ 😢', false);
+    }
+    if (convMode) convTimer = setTimeout(startConvRecord, 800);
+}
+
+$('sendBtn').onclick = () => sendMessage(chatInput.value);
+chatInput.onkeydown = (e) => { if (e.key === 'Enter') sendMessage(chatInput.value); };
+
+// ==========================================
+// RECORDING — MediaRecorder (proven to work on Chrome)
+// ==========================================
+let mediaRec = null;
+let isRecording = false;
+
+async function startRecording(durationMs, onFinish) {
+    if (mediaRec || isRecording) {
+        console.log('⚠️  Already recording, skip');
+        if (convMode) convTimer = setTimeout(startConvRecord, 800);
+        return;
+    }
+    isRecording = true;
+    recordBtn.disabled = true;
+    if (convTimer) { clearTimeout(convTimer); convTimer = null; }
+
+    const chunks = [];
+    let micStream = null;
+
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                channelCount: 1,
+            }
+        });
+
+        // Re-pipe mic through AudioContext to keep Opus from extreme silence compression
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(micStream);
+        const dest = audioCtx.createMediaStreamDestination();
+        source.connect(dest);
+        await audioCtx.resume();
+
+        const realMime = 'audio/webm;codecs=opus';
+        mediaRec = new MediaRecorder(dest.stream, {
+            mimeType: realMime,
+            audioBitsPerSecond: 96000  // Higher bitrate = less aggressive silence compression
+        });
+        console.log('MediaRecorder (repipe):', mediaRec.mimeType);
+
+        mediaRec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+        mediaRec.onerror = (e) => console.error('Recorder error:', e.error || e);
+        mediaRec.onstop = () => {
+            if (micStream) micStream.getTracks().forEach(t => t.stop());
+            if (audioCtx) { audioCtx.close().catch(() => {}); }
+            recordBtn.classList.remove('recording');
+            recordBtn.disabled = false;
+            mediaRec = null;
+            isRecording = false;
+            recordLabel.textContent = 'Tap to Speak';
+
+            const blob = new Blob(chunks, { type: realMime });
+            console.log('Recorded:', blob.size, 'bytes, chunks:', chunks.length);
+            // Accept any blob > 100 bytes (Chrome WebM is tiny)
+            if (blob.size < 100) {
+                console.log('⏱️  Too small (' + blob.size + ' bytes), skip');
+                if (convMode) convTimer = setTimeout(startConvRecord, 600);
+                return;
+            }
+            if (onFinish) onFinish(blob);
+        };
+
+        mediaRec.start(1000);
+        recordBtn.classList.add('recording');
+        recordLabel.textContent = '🔴 Speaking...';
+        console.log('🎙️ MediaRecorder started,', durationMs, 'ms');
+
+        setTimeout(() => {
+            if (mediaRec && mediaRec.state === 'recording') {
+                mediaRec.stop();
+            }
+        }, durationMs);
+    } catch (e) {
+        console.error('Mic error:', e);
+        showToast('Mic error: ' + (e.message || e), 'error');
+        if (micStream) micStream.getTracks().forEach(t => t.stop());
+        if (audioCtx) { audioCtx.close().catch(() => {}); }
+        mediaRec = null;
+        isRecording = false;
+        recordBtn.disabled = false;
+        recordBtn.classList.remove('recording');
+        recordLabel.textContent = 'Tap to Speak';
+        if (convMode) convTimer = setTimeout(startConvRecord, 1000);
+    }
+}
+
+// ==========================================
+// MANUAL MODE
+// ==========================================
+recordBtn.onclick = () => {
+    if (convMode) { stopConvMode(); return; }
+    startRecording(15000, async (blob) => { await transcribeAndSend(blob); });
+};
+
+// ==========================================
+// CONVERSE MODE — Record → STT → AI → TTS → loop
+// ==========================================
+function startConvRecord() {
+    if (!convMode) return;
+    if (mediaRec || isRecording) {
+        console.log('⏳ Converse retry delayed because recording still active');
+        convTimer = setTimeout(startConvRecord, 800);
+        return;
+    }
+    console.log('🎙️ Converse: recording 8s...');
+    recordLabel.textContent = '🎤 Listening...';
+    startRecording(8000, async (blob) => { await transcribeAndSend(blob); });
+}
+
+function stopConvMode() {
+    convMode = false;
+    clearTimeout(convTimer);
+    recordBtn.classList.remove('converse-active');
+    recordLabel.textContent = 'Tap to Speak';
+    debugInfo.textContent = 'JS: v9 ✅';
+    updateConvBtn();
+}
+
+function updateConvBtn() {
+    const btn = $('btnConvMode');
+    btn.textContent = convMode ? '💬 Converse: ON' : '💬 Converse: OFF';
+    btn.style.borderColor = convMode ? 'var(--accent-3)' : 'var(--border)';
+    btn.style.color = convMode ? 'var(--accent-3)' : 'var(--text-secondary)';
+}
+
+$('btnConvMode').onclick = () => {
+    convMode = !convMode;
+    if (convMode) {
+        recordBtn.classList.add('converse-active');
+        debugInfo.textContent = 'JS: v9 ✅ | Converse: ON';
+        showToast('💬 Converse ON — พูดได้เลย', 'info');
+        startConvRecord();
+    } else {
+        stopConvMode();
+    }
+    updateConvBtn();
+};
+
+async function transcribeAndSend(blob) {
+    const reader = new FileReader();
+    reader.readAsDataURL(blob);
+    reader.onloadend = async () => {
+        const b64 = reader.result.split(',')[1];
+        try {
+            const r = await fetch('/api/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ audio_base64: b64 }),
+            });
+            const d = await r.json();
+            if (d.success && d.text) {
+                let text = d.text.trim();
+                console.log('Transcribed:', text);
+                if (text === lastSentText) {
+                    console.log('⏭️  Duplicate skip');
+                    if (convMode) convTimer = setTimeout(startConvRecord, 500);
+                    return;
+                }
+                lastSentText = text;
+                await sendMessage(text);
+            } else {
+                showToast('Transcription failed: ' + (d.error || 'no text'), 'error');
+                if (convMode) convTimer = setTimeout(startConvRecord, 800);
+            }
+        } catch (e) {
+            console.error('Transcribe:', e);
+            if (convMode) convTimer = setTimeout(startConvRecord, 800);
+        }
+    };
+}
+
+// ── Search Toggle ──
+function updateSearchBtn() {
+    const btn = $('btnSearchMode');
+    btn.textContent = searchMode ? '🌐 Search: ON' : '🌐 Search: OFF';
+    btn.style.borderColor = searchMode ? 'var(--accent-2)' : 'var(--border)';
+    btn.style.color = searchMode ? 'var(--accent-2)' : 'var(--text-secondary)';
+}
+updateSearchBtn();
+
+$('btnSearchMode').onclick = () => {
+    searchMode = !searchMode;
+    updateSearchBtn();
+    showToast(searchMode ? 'Internet search ON 🌐' : 'Internet search OFF', 'info');
+};
+
+// ── Other Buttons ──
+$('btnTestVoice').onclick = () => sendMessage('สวัสดี VICHYA ช่วยแนะนำตัวหน่อย');
+$('btnClearChat').onclick = () => {
+    chatMessages.innerHTML = `<div class="msg msg-bot"><div class="msg-label">VICHYA</div>สวัสดีค่ะ! ฉันคือ วิชญะ (VICHYA) ผู้ช่วย AI อัจฉริยะของคุณ มีอะไรให้ฉันช่วยไหมคะ? 😊<div class="msg-time">now</div></div>`;
+};
+$('btnPlayLast').onclick = () => {
+    if (lastAudioB64) { playAudioB64(lastAudioB64); }
+    else showToast('No audio yet', 'info');
+};
+</script>
+</body>
+</html>
