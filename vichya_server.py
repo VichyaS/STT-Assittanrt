@@ -47,9 +47,12 @@ else:
         OPENROUTER_API_KEY = "your-api-key-here"
         print("⚠️  API key not found. Set OPENROUTER_API_KEY env var or create k.py")
 
-CHAT_MODEL = "google/gemini-2.5-pro"
-STT_MODEL = "openai/whisper-large-v3"
-POST_CORRECT_MODEL = "google/gemini-2.5-pro"  # Stronger model for Thai correction
+CHAT_MODEL = "openai/gpt-4o-mini"
+STT_MODEL = "openai/whisper-large-v3-turbo"
+TTS_MODEL = "google/gemini-3.1-flash-tts-preview"  # Gemini Flash TTS (via OpenRouter, PCM→MP3)
+# Grok Voice TTS as alternative (supports MP3 natively, no ffmpeg needed)
+TTS_MODEL_GROK = "x-ai/grok-voice-tts-1.0"
+POST_CORRECT_MODEL = "google/gemini-2.5-flash"
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -229,7 +232,7 @@ def llm_correct_stt(text: str) -> str:
                 "role": "user",
                 "content": f"ตรวจสอบข้อความนี้: {text}"
             }],
-            max_tokens=100,
+
             temperature=0.0,
         )
         msg = resp.choices[0].message
@@ -284,6 +287,7 @@ def generate_response(user_text: str, enable_search: bool = False) -> str:
         "ตอบให้กระชับภายในขีดจำกัด ไม่ต้องตอบยาวเกินความจำเป็น "
         "ถ้าคำถามต้องการข้อมูลเชิงลึก ให้วิเคราะห์อย่างเป็นขั้นตอน "
         "อย่าเสีย tokens ไปกับการอ่าน URL ที่ผู้ใช้ส่งมา"
+        "อย่าอ่านข้อความ *.com หรือ *.org หรือ *.net หรือ *.io หรือ *.xyz"
     )
 
     model = CHAT_MODEL
@@ -296,7 +300,6 @@ def generate_response(user_text: str, enable_search: bool = False) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_text},
         ],
-        max_tokens=2048,
         temperature=0.7,
     )
 
@@ -306,35 +309,110 @@ def generate_response(user_text: str, enable_search: bool = False) -> str:
     return reply
 
 # ==========================================
-# 4. Text-to-Speech via edge-tts (fast, natural Thai)
+# ==========================================
+# 4. Text-to-Speech via OpenRouter (Gemini 3.1 Flash TTS / Grok Voice / fallbacks)
 # ==========================================
 import emoji
 def remove_emoji(text: str) -> str:
     return emoji.replace_emoji(text, replace='')
 
 def text_to_speech(text: str, filename: str = "vichya_response.mp3") -> str:
-    """Convert text to speech MP3. Strips emoji before sending to TTS."""
+    """Convert text to speech MP3 via OpenRouter TTS (Gemini Flash / Grok Voice / fallbacks).
+    Pipeline: Gemini 3.1 Flash TTS → Grok Voice TTS → edge-tts → gTTS (last resort)
+    Uses Gemini native voice 'Puck' (supports Thai well).
+    """
     text = remove_emoji(text)
     if not text.strip():
         return filename
-    print("🔊 Synthesizing speech...")
 
-    # Try edge-tts first (much faster, more natural Thai)
+    # ── 1st: OpenRouter Gemini 3.1 Flash TTS (PCM → ffmpeg → MP3) ──
+    if FFMPEG_PATH:
+        try:
+            pcm_path = filename + ".pcm"
+            payload = {
+                "model": TTS_MODEL,
+                "input": text,
+                "voice": "Puck",  # Google native voice that works with Thai
+                "response_format": "pcm",
+            }
+            print(f"🔊 Gemini 3.1 Flash TTS ({len(text)} chars)...")
+            resp = requests.post(
+                "https://openrouter.ai/api/v1/audio/speech",
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
+                json=payload, timeout=60,
+            )
+            if resp.status_code == 200:
+                with open(pcm_path, "wb") as f:
+                    f.write(resp.content)
+                pcm_size = os.path.getsize(pcm_path)
+                if pcm_size > 200:
+                    result = subprocess.run(
+                        [FFMPEG_PATH, "-y", "-f", "s16le", "-ar", "24000", "-ac", "1",
+                         "-i", pcm_path, "-codec:a", "libmp3lame", "-b:a", "64k", filename],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    os.unlink(pcm_path)
+                    if result.returncode == 0:
+                        mp3_size = os.path.getsize(filename)
+                        print(f"✅ Audio saved (Gemini 3.1 Flash TTS → MP3): {filename} ({mp3_size} bytes)")
+                        return filename
+                    else:
+                        print(f"⚠️  ffmpeg PCM→MP3 failed: {result.stderr[:200]}")
+                else:
+                    os.unlink(pcm_path)
+                    print(f"⚠️  Gemini TTS returned tiny PCM ({pcm_size}b)")
+            else:
+                print(f"⚠️  Gemini TTS error {resp.status_code}: {resp.text[:150]}")
+        except Exception as e:
+            print(f"⚠️  Gemini TTS failed: {e}")
+    else:
+        print("⚠️  ffmpeg not found, skipping Gemini TTS (needs PCM→MP3 conversion)")
+
+    # ── 2nd: Grok Voice TTS (supports MP3 natively, good multilingual) ──
+    try:
+        print("🔊 Grok Voice TTS...")
+        payload = {
+            "model": TTS_MODEL_GROK,
+            "input": text,
+            "voice": "Eve",
+            "response_format": "mp3",
+        }
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/audio/speech",
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
+            json=payload, timeout=60,
+        )
+        if resp.status_code == 200:
+            with open(filename, "wb") as f:
+                f.write(resp.content)
+            size = os.path.getsize(filename)
+            if size > 200:
+                print(f"✅ Audio saved (Grok Voice TTS): {filename} ({size} bytes)")
+                return filename
+            else:
+                print(f"⚠️  Grok Voice returned tiny audio ({size}b)")
+        else:
+            print(f"⚠️  Grok TTS error {resp.status_code}: {resp.text[:150]}")
+    except Exception as e:
+        print(f"⚠️  Grok TTS failed: {e}")
+
+    # ── 3rd: edge-tts (fast, natural Thai) ──
     try:
         import asyncio as _asyncio
         loop = _asyncio.new_event_loop()
         _asyncio.set_event_loop(loop)
         try:
             from edge_tts import Communicate
-            voice = "th-TH-PremwadeeNeural"  # Natural female Thai voice
-            rate = "+10%"  # Slightly faster than normal (was +20%)
+            voice = "th-TH-PremwadeeNeural"
+            rate = "+10%"
 
             async def _speak():
                 comm = Communicate(text, voice, rate=rate)
                 await comm.save(filename)
 
             loop.run_until_complete(_speak())
-            print(f"✅ Audio saved (edge-tts): {filename}")
+            size = os.path.getsize(filename)
+            print(f"✅ Audio saved (edge-tts): {filename} ({size} bytes)")
             return filename
         finally:
             loop.close()
@@ -343,11 +421,12 @@ def text_to_speech(text: str, filename: str = "vichya_response.mp3") -> str:
     except Exception as e:
         print(f"⚠️  edge-tts failed: {e}, falling back to gTTS...")
 
-    # Fallback to gTTS
+    # ── 3rd: gTTS (last resort) ──
     from gtts import gTTS
     tts = gTTS(text=text, lang="th", slow=False)
     tts.save(filename)
-    print(f"✅ Audio saved (gTTS): {filename}")
+    size = os.path.getsize(filename)
+    print(f"✅ Audio saved (gTTS): {filename} ({size} bytes)")
     return filename
 
 # ==========================================
@@ -373,6 +452,8 @@ def api_status():
         "version": "2.0",
         "chat_model": CHAT_MODEL,
         "stt_model": STT_MODEL,
+        "tts_model": TTS_MODEL,
+        "tts_model_alt": TTS_MODEL_GROK,
         "timestamp": datetime.now().isoformat(),
     })
 
@@ -499,6 +580,8 @@ if __name__ == "__main__":
     print("=" * 55)
     print(f"  Chat Model : {CHAT_MODEL}")
     print(f"  STT Model  : {STT_MODEL}")
+    print(f"  TTS Model  : {TTS_MODEL} (voice: Puck)")
+    print(f"  TTS Alt    : {TTS_MODEL_GROK} (voice: Eve)")
     print(f"  URL        : http://localhost:5000")
     print("=" * 55 + "\n")
 
