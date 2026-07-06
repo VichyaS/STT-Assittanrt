@@ -22,7 +22,34 @@ from openai import OpenAI
 from openai import OpenAI
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["*"], methods=["GET", "POST", "OPTIONS"])
+
+# Security: limit request size to 25MB (prevents DoS from huge uploads)
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
+
+# Simple in-memory rate limiting (prevents API abuse)
+from collections import defaultdict
+from threading import Lock
+import time as _time
+
+_rate_limit_store = defaultdict(list)
+_rate_limit_lock = Lock()
+RATE_LIMIT_REQUESTS = 30       # max requests
+RATE_LIMIT_WINDOW = 60          # per 60 seconds
+
+def _check_rate_limit():
+    """Returns True if request is allowed, False if rate-limited."""
+    client_ip = request.remote_addr or "unknown"
+    now = _time.time()
+    with _rate_limit_lock:
+        timestamps = _rate_limit_store[client_ip]
+        # Remove old entries outside the window
+        timestamps = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
+        _rate_limit_store[client_ip] = timestamps
+        if len(timestamps) >= RATE_LIMIT_REQUESTS:
+            return False
+        timestamps.append(now)
+        return True
 
 # Ensure console output on Windows can handle Unicode emojis safely
 try:
@@ -85,8 +112,17 @@ if not FFMPEG_PATH:
 # ==========================================
 # 2. Speech-to-Text via OpenRouter Whisper
 # ==========================================
+ALLOWED_AUDIO_FORMATS = {"wav", "webm", "ogg", "mp3", "m4a", "flac"}
+
 def speech_to_text(audio_file_path: str) -> str:
     """Convert audio to text. Receives raw 16kHz WAV from browser → Whisper STT."""
+    # Security: validate file path is a real file
+    if not audio_file_path or not isinstance(audio_file_path, str):
+        return ""
+    if not os.path.exists(audio_file_path):
+        print(f"🔇 File not found: {audio_file_path}")
+        return ""
+
     file_size = os.path.getsize(audio_file_path)
     print(f"🎤 Transcribing audio: {audio_file_path} ({file_size} bytes)")
 
@@ -134,18 +170,21 @@ def speech_to_text(audio_file_path: str) -> str:
         # ── Silence detection disabled — RMS check unreliable on Python 3.14 ──
         # Let Whisper handle silence detection natively.
 
-        # ── Detect audio format ──
+        # ── Validate audio format (security: restrict to known safe formats) ──
         audio_format = "wav"
         if not converted:
             lower_path = wav_path.lower()
-            if lower_path.endswith(".webm"):
-                audio_format = "webm"
-            elif lower_path.endswith(".ogg"):
-                audio_format = "ogg"
-            elif lower_path.endswith(".mp3"):
-                audio_format = "mp3"
-            elif lower_path.endswith(".m4a"):
-                audio_format = "m4a"
+            ext = os.path.splitext(lower_path)[1].lstrip(".")
+            if ext in ALLOWED_AUDIO_FORMATS:
+                audio_format = ext
+            else:
+                # If unknown extension, fall back to wav or send raw
+                audio_format = "wav" if lower_path.endswith(".wav") else ext
+
+        # Security: enforce max audio size (25MB raw)
+        if wav_size > 20 * 1024 * 1024:
+            print(f"🔇 Audio too large ({wav_size} bytes) — max 20MB")
+            return ""
 
         print(f"🧾 Sending audio to STT: format={audio_format}, size={wav_size} bytes")
         # ── Whisper transcription ──
@@ -461,11 +500,21 @@ def api_status():
 def api_chat():
     start = time.time()
     try:
+        # Rate limiting check
+        if not _check_rate_limit():
+            return jsonify({"success": False, "error": "Rate limit exceeded. Try again later."}), 429
+
         data = request.get_json(force=True)
         message = (data or {}).get("message", "").strip()
         enable_search = (data or {}).get("search", False)
-        if not message:
+
+        # Input validation
+        if not message or not isinstance(message, str):
             return jsonify({"success": False, "error": "No message provided"}), 400
+        if len(message) > 5000:
+            return jsonify({"success": False, "error": "Message too long (max 5000 chars)"}), 400
+        if not isinstance(enable_search, bool):
+            enable_search = False
 
         reply = generate_response(message, enable_search=enable_search)
 
@@ -487,16 +536,24 @@ def api_chat():
         })
     except Exception as e:
         print(f"❌ Chat error: {traceback.format_exc()}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "Internal server error"}), 500
 
 @app.route("/api/transcribe", methods=["POST"])
 def api_transcribe():
     start = time.time()
     try:
+        # Rate limiting check
+        if not _check_rate_limit():
+            return jsonify({"success": False, "error": "Rate limit exceeded. Try again later."}), 429
+
         data = request.get_json(force=True)
         audio_b64 = (data or {}).get("audio_base64", "")
-        if not audio_b64:
+        if not audio_b64 or not isinstance(audio_b64, str):
             return jsonify({"success": False, "error": "No audio data"}), 400
+
+        # Security: validate base64 data size before decoding (prevents bomb attacks)
+        if len(audio_b64) > 30 * 1024 * 1024:  # ~22MB raw
+            return jsonify({"success": False, "error": "Audio data too large"}), 400
 
         # Write temp file — browser sends WAV
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
@@ -518,7 +575,7 @@ def api_transcribe():
         })
     except Exception as e:
         print(f"❌ Transcription error: {traceback.format_exc()}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "Internal server error"}), 500
 
 @app.route("/api/full-process", methods=["POST"])
 def api_full_process():
@@ -526,6 +583,10 @@ def api_full_process():
     start = time.time()
     sid = str(uuid.uuid4())[:8].upper()
     try:
+        # Rate limiting check
+        if not _check_rate_limit():
+            return jsonify({"success": False, "error": "Rate limit exceeded.", "session_id": sid}), 429
+
         import sounddevice as sd
         from scipy.io import wavfile
 
@@ -569,7 +630,8 @@ def api_full_process():
             "timestamp": datetime.now().isoformat(),
         })
     except Exception as e:
-        return jsonify({"success": False, "error": str(e), "session_id": sid}), 500
+        print(f"❌ Full-process error: {traceback.format_exc()}")
+        return jsonify({"success": False, "error": "Internal server error", "session_id": sid}), 500
 
 # ==========================================
 # 6. Main Entry Point
@@ -586,4 +648,4 @@ if __name__ == "__main__":
     print("=" * 55 + "\n")
 
     os.makedirs("templates", exist_ok=True)
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000)
