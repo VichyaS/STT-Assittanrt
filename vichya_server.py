@@ -14,18 +14,31 @@ import tempfile
 import uuid
 import traceback
 import subprocess
-import re
-import asyncio
 import requests
 from datetime import datetime
 from openai import OpenAI
-from openai import OpenAI
+import emoji
 
 app = Flask(__name__)
-CORS(app, origins=["*"], methods=["GET", "POST", "OPTIONS"])
 
-# Security: limit request size to 25MB (prevents DoS from huge uploads)
-app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
+# Security: CORS - restrict in production via environment variable
+PRODUCTION_CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "*")
+CORS(app, origins=[PRODUCTION_CORS_ORIGIN], methods=["GET", "POST", "OPTIONS"])
+
+# Security: limit request size to 10MB (prevents DoS from huge uploads)
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
+
+# Security: Add security headers to all responses
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "0"  # Deprecated but safe
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # Only enable HSTS in production
+    if os.environ.get("ENABLE_HSTS", "0") == "1":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # Simple in-memory rate limiting (prevents API abuse)
 from collections import defaultdict
@@ -40,6 +53,10 @@ RATE_LIMIT_WINDOW = 60          # per 60 seconds
 def _check_rate_limit():
     """Returns True if request is allowed, False if rate-limited."""
     client_ip = request.remote_addr or "unknown"
+    # Use X-Forwarded-For if behind proxy
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
     now = _time.time()
     with _rate_limit_lock:
         timestamps = _rate_limit_store[client_ip]
@@ -61,18 +78,28 @@ except Exception:
 # ==========================================
 # 1. Configuration & API Setup
 # ==========================================
-# Load API key: environment variable (production) → k.py (local dev)
-if os.environ.get("OPENROUTER_API_KEY"):
-    OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
-    print("✅ API Key loaded from environment variable")
-else:
-    try:
-        from k import API_KEY
-        OPENROUTER_API_KEY = API_KEY
-        print("✅ API Key loaded from k.py")
-    except ImportError:
-        OPENROUTER_API_KEY = "your-api-key-here"
-        print("⚠️  API key not found. Set OPENROUTER_API_KEY env var or create k.py")
+# Load API key: environment variable (production) only
+# NEVER commit API keys to git. Use .env file for local development.
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+if not OPENROUTER_API_KEY:
+    # Fallback to .env file for local development
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    if key.strip() == "OPENROUTER_API_KEY":
+                        OPENROUTER_API_KEY = val.strip().strip("\"'").strip()
+                        break
+
+if not OPENROUTER_API_KEY:
+    print("❌ CRITICAL: OPENROUTER_API_KEY not set!")
+    print("   Set the environment variable or create a .env file:")
+    print("   OPENROUTER_API_KEY=sk-or-v1-your-key-here")
+    print("   See .env.example for reference.")
+    OPENROUTER_API_KEY = ""  # Will fail at runtime if used
 
 CHAT_MODEL = "openai/gpt-4o-mini"
 STT_MODEL = "openai/whisper-large-v3-turbo"
@@ -89,22 +116,37 @@ client = OpenAI(
 SAMPLE_RATE = 44100
 RECORD_DURATION = 5
 
-# Locate ffmpeg for audio conversion
+# Locate ffmpeg for audio conversion — restrict to known safe paths
 FFMPEG_PATH = None
-# Render/Linux: ffmpeg is usually at /usr/bin/ffmpeg
-for candidate in [
-    "ffmpeg",
-    "ffmpeg.exe",
+FFMPEG_CANDIDATES = [
     "/usr/bin/ffmpeg",
     "/usr/local/bin/ffmpeg",
-]:
+]
+# On Windows, check common installation paths
+if sys.platform == "win32":
+    FFMPEG_CANDIDATES = [
+        r"C:\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+    ]
+
+for candidate in FFMPEG_CANDIDATES:
+    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        try:
+            subprocess.run([candidate, "-version"], capture_output=True, timeout=5, check=True)
+            FFMPEG_PATH = candidate
+            print(f"✅ ffmpeg found: {FFMPEG_PATH}")
+            break
+        except Exception:
+            continue
+
+if not FFMPEG_PATH:
+    # Also try PATH lookup as last resort (with security warning)
     try:
-        subprocess.run([candidate, "-version"], capture_output=True, timeout=5, check=True)
-        FFMPEG_PATH = candidate
-        print(f"✅ ffmpeg found: {FFMPEG_PATH}")
-        break
+        result = subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5, check=True)
+        FFMPEG_PATH = "ffmpeg"
+        print(f"✅ ffmpeg found in PATH: {FFMPEG_PATH}")
     except Exception:
-        continue
+        pass
 
 if not FFMPEG_PATH:
     print("⚠️  ffmpeg not found — audio conversion disabled")
@@ -348,10 +390,8 @@ def generate_response(user_text: str, enable_search: bool = False) -> str:
     return reply
 
 # ==========================================
-# ==========================================
 # 4. Text-to-Speech via OpenRouter (Gemini 3.1 Flash TTS / Grok Voice / fallbacks)
 # ==========================================
-import emoji
 def remove_emoji(text: str) -> str:
     return emoji.replace_emoji(text, replace='')
 
@@ -504,7 +544,9 @@ def api_chat():
         if not _check_rate_limit():
             return jsonify({"success": False, "error": "Rate limit exceeded. Try again later."}), 429
 
-        data = request.get_json(force=True)
+        data = request.get_json(force=False, silent=True)
+        if not data:
+            return jsonify({"success": False, "error": "Invalid JSON payload"}), 400
         message = (data or {}).get("message", "").strip()
         enable_search = (data or {}).get("search", False)
 
@@ -546,7 +588,9 @@ def api_transcribe():
         if not _check_rate_limit():
             return jsonify({"success": False, "error": "Rate limit exceeded. Try again later."}), 429
 
-        data = request.get_json(force=True)
+        data = request.get_json(force=False, silent=True)
+        if not data:
+            return jsonify({"success": False, "error": "Invalid JSON payload"}), 400
         audio_b64 = (data or {}).get("audio_base64", "")
         if not audio_b64 or not isinstance(audio_b64, str):
             return jsonify({"success": False, "error": "No audio data"}), 400
@@ -648,4 +692,8 @@ if __name__ == "__main__":
     print("=" * 55 + "\n")
 
     os.makedirs("templates", exist_ok=True)
-    app.run(host="0.0.0.0", port=5000)
+
+    # In production, use gunicorn (see Procfile)
+    # Only enable debug mode if FLASK_DEBUG is set
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(host="0.0.0.0", port=5000, debug=debug_mode)

@@ -1,6 +1,66 @@
-k.py
+# ==========================================
+# AI VICHYA - Production .gitignore
+# ==========================================
+
+# === API Keys & Secrets ===
 .env
-*.env
+.env.local
+.env.production
+k.py
+*.key
+*.pem
+credentials.json
+secrets.json
+
+# === Python Environment ===
+.venv/
+venv/
+env/
+virtualenv/
+
+# === Python Standard Library (NOT project code) ===
+# The entire CPython installation lives in this repo root.
+# These are NOT part of our application — remove from git tracking.
+/DLLs/
+/Doc/
+/include/
+/libs/
+/Scripts/
+/tcl/
+/python*.exe
+/python*.dll
+/vcruntime*.dll
+/LICENSE.txt
+/NEWS.txt
+
+# === Python Bytecode ===
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+
+# === IDE & Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
+Thumbs.db
+
+# === Audio temp files ===
+*.wav
+*.mp3
+*.pcm
+user_command.wav
+vichya_response*.mp3
+
+# === Logs ===
+*.log
+logs/
+
+# === OS files ===
+.DS_Store
+Thumbs.db

@@ -9,11 +9,31 @@ from scipy.io import wavfile
 from openai import OpenAI
 from gtts import gTTS
 from playsound import playsound
-from k import API_KEY
+
 # ==========================================
-# 1. ตั้งค่าระบบและ API (โปรดใส่ Key ของคุณให้ถูกต้อง)
+# 1. ตั้งค่าระบบและ API (ใช้ Environment Variable)
 # ==========================================
-OPENROUTER_API_KEY = API_KEY  # เปลี่ยนเป็น OpenRouter API Key ของคุณ
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+if not OPENROUTER_API_KEY:
+    # Try loading from .env file
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    if key.strip() == "OPENROUTER_API_KEY":
+                        OPENROUTER_API_KEY = val.strip().strip("\"'").strip()
+                        break
+
+if not OPENROUTER_API_KEY:
+    print("❌ CRITICAL: OPENROUTER_API_KEY not set!")
+    print("   Set the environment variable or create a .env file:")
+    print("   OPENROUTER_API_KEY=sk-or-v1-your-key-here")
+    print("   See .env.example for reference.")
+    exit(1)
+
 MODEL_NAME = "anthropic/claude-3-haiku"  # หรือใช้ "google/gemini-2.5-flash" เพื่อความเร็ว
 
 # เรียกใช้ Client สำหรับ LLM Chat
