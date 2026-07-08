@@ -24,6 +24,7 @@ virtualenv/
 /DLLs/
 /Doc/
 /include/
+/Lib/
 /libs/
 /Scripts/
 /tcl/
